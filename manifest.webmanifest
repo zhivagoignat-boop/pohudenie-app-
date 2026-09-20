@@ -1,0 +1,20 @@
+{
+  "name": "Жизнь на похудение",
+  "short_name": "Похудение",
+  "description": "Личное приложение: тренировки, питание, прогресс и постоянный отчёт для Claude",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1216",
+  "theme_color": "#0f1216",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

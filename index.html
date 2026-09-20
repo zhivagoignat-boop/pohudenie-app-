@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1216">
+<title>Жизнь на похудение</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💪</text></svg>">
+<link rel="stylesheet" href="assets/css/app.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-row">
+    <button class="nav-btn" id="prevDay" aria-label="Предыдущий день">‹</button>
+    <div class="topbar-date">
+      <strong id="curDate">—</strong>
+      <span id="curMeta" class="muted"></span>
+    </div>
+    <button class="nav-btn" id="nextDay" aria-label="Следующий день">›</button>
+  </div>
+  <div class="progressbar" title="Прогресс по весу"><div id="topProgress"></div></div>
+</header>
+
+<main id="views">
+  <section class="view" data-view="setup" hidden></section>
+  <section class="view" data-view="today"></section>
+  <section class="view" data-view="workout" hidden></section>
+  <section class="view" data-view="food" hidden></section>
+  <section class="view" data-view="progress" hidden></section>
+  <section class="view" data-view="schedule" hidden></section>
+  <section class="view" data-view="shoulder" hidden></section>
+  <section class="view" data-view="report" hidden></section>
+</main>
+
+<nav class="tabbar" id="tabbar">
+  <button data-tab="today"><span>🏠</span>Сегодня</button>
+  <button data-tab="workout"><span>🏋️</span>Трен.</button>
+  <button data-tab="food"><span>🍽️</span>Еда</button>
+  <button data-tab="progress"><span>📈</span>Прогресс</button>
+  <button data-tab="schedule"><span>⏰</span>График</button>
+  <button data-tab="shoulder"><span>🚨</span>Плечо</button>
+  <button data-tab="report"><span>🤖</span>Отчёт</button>
+</nav>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/report.js"></script>
+<script src="assets/js/telegram.js"></script>
+<script src="assets/js/ui.js"></script>
+</body>
+</html>
