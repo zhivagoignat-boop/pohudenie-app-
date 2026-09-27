@@ -303,6 +303,29 @@
     return String(text).replace(/\{partner\}/g, name ? ' с ' + name : '');
   }
 
+  /* Разбор «кода еды» — того, что Клод присылает в чат после фотографии.
+     Формат по строке на блюдо:
+        Название (порция) | ккал | белок | жир | углеводы | клетчатка
+     Всё кроме названия и калорий необязательно, дробные через точку или запятую. */
+  function parseFoodCode(text) {
+    var lines = String(text || '').split(/[\n\r]+/);
+    var items = [];
+    lines.forEach(function (line) {
+      line = line.trim();
+      if (!line || /^FD1/i.test(line) || line.indexOf('|') < 0) return;
+      var parts = line.split('|').map(function (x) { return x.trim(); });
+      var name = parts[0];
+      if (!name) return;
+      var nums = parts.slice(1).map(function (x) {
+        var v = parseFloat(String(x).replace(',', '.').replace(/[^0-9.\-]/g, ''));
+        return isNaN(v) ? 0 : v;
+      });
+      if (!nums.length || !nums[0]) return;                 // без калорий строка бессмысленна
+      items.push({ n: name, k: nums[0], p: nums[1] || 0, f: nums[2] || 0, c: nums[3] || 0, fb: nums[4] || 0 });
+    });
+    return items;
+  }
+
   function exportJSON() { return JSON.stringify(load(), null, 2); }
 
   function importJSON(text) {
@@ -317,7 +340,7 @@
   root.Store = {
     KEY: KEY, load: load, save: save, day: day, exState: exState,
     plannedWorkout: plannedWorkout, isTrainingDay: isTrainingDay,
-    nutrition: nutrition, findOption: findOption, addFood: addFood, removeFood: removeFood, searchFood: searchFood,
+    nutrition: nutrition, findOption: findOption, addFood: addFood, removeFood: removeFood, searchFood: searchFood, parseFoodCode: parseFoodCode,
     addWeight: addWeight, removeWeight: removeWeight, lastWeight: lastWeight, planWeight: planWeight,
     isConfigured: isConfigured, totalDays: totalDays, weeklyLoss: weeklyLoss, setProfile: setProfile, fill: fill,
     encodeSetup: encodeSetup, decodeSetup: decodeSetup,

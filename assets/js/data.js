@@ -467,6 +467,18 @@
     { n: '💪 Максимум клетчатки', items: ['Чечевица варёная', 'Отруби пшеничные', 'Малина', 'Авокадо'] }
   ];
 
+  /* Оценка порции без весов: что с чем сравнивать. Для кафе и командировок. */
+  var PORTION_HINTS = [
+    { n: '✋ Ладонь без пальцев', v: 'Мясо, рыба, курица — 100–120 г', k: '≈ 25–30 г белка' },
+    { n: '✊ Кулак', v: 'Гарнир: каша, макароны, картофель — 150–200 г', k: '≈ 200–250 ккал' },
+    { n: '🤲 Две пригоршни', v: 'Салат, овощи — 150–200 г', k: '≈ 50 ккал, 3–4 г клетчатки' },
+    { n: '👍 Большой палец', v: 'Масло, майонез, соус — 15 г', k: '≈ 100–130 ккал' },
+    { n: '🥄 Столовая ложка масла', v: 'Заправка салата, жарка — 15 мл', k: '≈ 135 ккал' },
+    { n: '🃏 Колода карт', v: 'Кусок мяса — 100 г', k: '≈ 200–250 ккал' },
+    { n: '🎾 Теннисный мяч', v: 'Фрукт, порция риса — 150 г', k: '≈ 80–200 ккал' },
+    { n: '☝️ Указательный палец', v: 'Сыр — 30 г', k: '≈ 120 ккал' }
+  ];
+
   var SHOPPING = [
     { group: 'Завтраки', items: ['Яйца 20 шт (варить партией в воскресенье)', 'Булки/батон 2–3 шт', 'Масло сливочное', 'Бананы 5–7 шт'] },
     { group: 'Обеды / ужины', items: ['Консервы мясные/рыбные 5 банок', 'Макароны готовые 2–3 пакета', 'Помидоры 5 шт или консервированные 2 банки', 'Хлеб 2 булки'] },
@@ -570,7 +582,7 @@
 
   var DATA = {
     program: PROGRAM, workouts: WORKOUTS, meals: MEALS, schedule: SCHEDULE,
-    shoulder: SHOULDER, shopping: SHOPPING, noCook: NO_COOK, eatingOut: EATING_OUT, fiberFoods: FIBER_FOODS, fiberCombos: FIBER_COMBOS, photoWeeks: PHOTO_WEEKS, checklist: CHECKLIST,
+    shoulder: SHOULDER, shopping: SHOPPING, noCook: NO_COOK, eatingOut: EATING_OUT, fiberFoods: FIBER_FOODS, fiberCombos: FIBER_COMBOS, portionHints: PORTION_HINTS, photoWeeks: PHOTO_WEEKS, checklist: CHECKLIST,
     workoutOrder: ['day1', 'day2', 'day3', 'day4']
   };
 

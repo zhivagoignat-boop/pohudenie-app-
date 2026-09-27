@@ -378,17 +378,40 @@
 
     // ----- оценка по фото -----
     var photoCfg = (S.load().settings || {}).photoUrl;
-    h += '<h2>📷 Оценить по фото</h2><div class="card">';
+    h += '<h2>📷 Еда по фото</h2>';
+
     if (photoCfg) {
-      h += '<p class="small muted">Сфотографируй тарелку — вернутся блюда с КБЖУ и клетчаткой. Оценка примерная: модель не знает, сколько масла на сковороде.</p>' +
+      h += '<div class="card"><p class="small muted">Сфотографируй тарелку — вернутся блюда с КБЖУ и клетчаткой. ' +
+        'Оценка примерная: модель не знает, сколько масла на сковороде.</p>' +
         '<button class="btn-primary btn-wide" id="photoBtn">Сделать фото или выбрать</button>' +
         '<input type="file" id="photoIn" accept="image/*" capture="environment" hidden>' +
-        '<div id="photoOut"></div>';
-    } else {
-      h += '<p class="small muted">Не настроено. Нужен свой сервис-посредник с ключом Claude API — иначе ключ пришлось бы положить в открытый код приложения, и им смог бы пользоваться кто угодно.</p>' +
-        '<button class="btn-wide" data-goto="progress">Настроить в «Прогрессе»</button>';
+        '<div id="photoOut"></div></div>';
     }
-    h += '</div>';
+
+    // Путь без всякой настройки: фото уходит в чат с Клодом, оттуда возвращается строка
+    h += '<div class="card">' +
+      (photoCfg ? '<strong>Через чат с Клодом</strong>' : '<strong>Как это работает</strong>') +
+      '<ol class="small" style="margin-top:6px">' +
+      '<li>Сфотографируй тарелку.</li>' +
+      '<li>Отправь фото Клоду в чат со словом <strong>«посчитай»</strong>.</li>' +
+      '<li>Он ответит строками вида <code>Блюдо | ккал | белок | жир | углеводы | клетчатка</code>.</li>' +
+      '<li>Скопируй ответ целиком и вставь сюда.</li>' +
+      '</ol>' +
+      '<textarea id="fdText" rows="4" placeholder="Стейк говяжий (250 г) | 620 | 54 | 44 | 0 | 0"></textarea>' +
+      '<button class="btn-primary btn-wide" id="fdParse" style="margin-top:8px">Разобрать и показать</button>' +
+      '<div id="fdOut"></div>' +
+      (photoCfg ? '' : '<p class="small muted" style="margin-bottom:0">Можно и без чата: свой сервис с ключом Claude API будет считать прямо в приложении — ' +
+        'см. <code>worker/README.md</code>, адрес вписывается в «Прогресс → Оценка по фото».</p>') +
+      '</div>';
+
+    // Совсем без техники: оценка порции по руке
+    h += '<details class="card"><summary>✋ Прикинуть на глаз, без фото</summary>' +
+      '<p class="small muted">Рука всегда с собой и растёт вместе с человеком, поэтому как мерка она надёжнее глазомера.</p>' +
+      '<table>' + D.portionHints.map(function (x) {
+        return '<tr><td class="small" style="white-space:nowrap">' + esc(x.n) + '</td><td class="small">' + esc(x.v) +
+          '<br><span class="muted">' + esc(x.k) + '</span></td></tr>';
+      }).join('') + '</table>' +
+      '<p class="small muted" style="margin-bottom:0">Сложил порции — впиши сумму в «Своё / добор» ниже.</p></details>';
 
     h += '<h2>🍴 Ел не дома</h2><div class="card">' +
       '<p class="small muted">Кафе, ресторан, командировка. Тапни по блюду — калории и белок добавятся в «добор». ' +
@@ -472,6 +495,17 @@
       pb.addEventListener('click', function () { $('#photoIn', v).click(); });
       $('#photoIn', v).addEventListener('change', function (e) { estimatePhoto(e.target.files[0]); });
     }
+    var fp = $('#fdParse', v);
+    if (fp) fp.addEventListener('click', function () {
+      var out = $('#fdOut', v);
+      var items = S.parseFoodCode($('#fdText', v).value);
+      if (!items.length) {
+        out.innerHTML = '<p class="small" style="color:var(--warn)">Не нашёл ни одной строки с блюдом. ' +
+          'Нужен формат <code>Название | ккал | белок | жир | углеводы | клетчатка</code> — по строке на блюдо.</p>';
+        return;
+      }
+      renderPhotoResult({ items: items, comment: 'Разобрано строк: ' + items.length }, out);
+    });
 
     $$('[data-out]', v).forEach(function (b) {
       b.addEventListener('click', function () {
