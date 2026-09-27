@@ -162,3 +162,13 @@ body.tg .topbar { padding-top: 8px; }            /* свою «чёлку» ри
 body.tg .toast { bottom: calc(86px + env(safe-area-inset-bottom)); }
 body.tg-main .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .sync-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* ---- чипсы «ел не дома» ---- */
+.chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
+.chip {
+  font-size: 12.5px; padding: 8px 11px; border-radius: 99px; line-height: 1.2;
+  background: var(--card2); border: 1px solid var(--line); color: var(--fg);
+}
+.chip b { color: var(--accent2); font-weight: 600; margin-left: 3px; }
+.chip:active { background: var(--accent); color: #06220f; border-color: transparent; }
+.chip:active b { color: #06220f; }

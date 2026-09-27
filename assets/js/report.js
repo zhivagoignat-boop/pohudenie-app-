@@ -50,9 +50,23 @@
     return sum;
   }
 
+  /* Есть ли в дне реальные данные. Пустая заготовка дня создаётся при простом
+     листании календаря, и раньше она расширяла период отчёта на будущие дни. */
+  function dayHasContent(x) {
+    if (!x) return false;
+    if (x.w && (x.w.done || x.w.skipped)) return true;
+    var ex = (x.w && x.w.ex) || {};
+    if (Object.keys(ex).some(function (i) { return ex[i].done || ex[i].kg != null || ex[i].note; })) return true;
+    if (x.w && x.w.cardio && x.w.cardio.done) return true;
+    if (x.m && Object.keys(x.m).some(function (i) { return x.m[i]; })) return true;
+    return !!(x.steps || x.sleep || x.water || x.pain || x.energy || (x.note && x.note.trim()));
+  }
+
   /* Все даты программы от старта до «сегодня» включительно */
   function datesUpTo(state, now) {
-    var logged = Object.keys(state.days || {}).concat((state.weights || []).map(function (w) { return w.d; })).sort();
+    var days = state.days || {};
+    var logged = Object.keys(days).filter(function (d) { return dayHasContent(days[d]); })
+      .concat((state.weights || []).map(function (w) { return w.d; })).sort();
     var start = state.profile.startDate;
     var end = now;
     if (logged.length) {
@@ -84,7 +98,8 @@
     }
     var lost = start.kg - cur.kg;
     var left = cur.kg - state.profile.goalWeight;
-    var delta = cur.kg - planNow;              // + = отстаём, − = опережаем
+    var stale = S.diffDays(cur.d, now);                  // сколько дней назад взвешивались
+    var delta = cur.kg - S.planWeight(cur.d);            // сравниваем с планом НА ДАТУ взвешивания
     var total = state.profile.startWeight - state.profile.goalWeight;
     L.push('| Параметр | Значение |');
     L.push('|---|---|');
@@ -94,7 +109,8 @@
     L.push('| Сброшено | **' + r1(lost) + ' кг** из ' + r1(total) + ' (' + pct(lost, total) + '%) |');
     L.push('| Осталось | ' + r1(left) + ' кг |');
     L.push('| План на сегодня | ' + r1(planNow) + ' кг |');
-    L.push('| Отклонение от плана | **' + sign(delta) + ' кг** ' + (delta > 0.5 ? '⚠️ отстаём' : (delta < -0.5 ? '✅ опережаем' : '✅ в графике')) + ' |');
+    L.push('| Отклонение от плана (на дату взвешивания) | **' + sign(delta) + ' кг** ' + (delta > 0.5 ? '⚠️ отстаём' : (delta < -0.5 ? '✅ опережаем' : '✅ в графике')) + ' |');
+    if (stale > 2) L.push('| ⚠️ Свежесть | взвешивание ' + stale + ' дн. назад — сравнивать с сегодняшней кривой рано |');
     L.push('| Прогресс | `' + bar(pct(lost, total)) + '` ' + pct(lost, total) + '% |');
 
     // фактический темп
@@ -359,6 +375,12 @@
     var flags = [];
     var cur = state.weights.length ? state.weights[state.weights.length - 1] : null;
     if (cur) {
+      var first = state.weights[0];
+      if (Math.abs(first.kg - state.profile.startWeight) > 0.5) {
+        flags.push('🟠 Стартовый вес в профиле ' + r1(state.profile.startWeight) + ' кг, а первое взвешивание — ' +
+          r1(first.kg) + ' кг. Плановая кривая смещена на ' + r1(Math.abs(first.kg - state.profile.startWeight)) +
+          ' кг, поэтому «опережение/отставание» врёт. Поправь стартовый вес в «Прогресс → Профиль».');
+      }
       var delta = cur.kg - S.planWeight(cur.d);
       if (delta > 1.5) flags.push('🔴 Отставание от плановой кривой на ' + r1(delta) + ' кг — нужен пересмотр дефицита или активности.');
       if (delta < -1.5) flags.push('🟠 Опережение плана на ' + r1(-delta) + ' кг — проверь, не слишком ли агрессивный дефицит (риск потери мышц).');
@@ -390,8 +412,10 @@
     if (chkDone < D.checklist.length) {
       L.push('## 📋 ПОДГОТОВКА К СТАРТУ — ' + chkDone + '/' + D.checklist.length);
       L.push('');
+      var partner = (state.profile.partner || '').trim();
       D.checklist.forEach(function (item, i) {
-        L.push('- [' + (state.checklist && state.checklist[i] ? 'x' : ' ') + '] ' + item);
+        var text = String(item).replace(/\{partner\}/g, partner ? ' с ' + partner : '');
+        L.push('- [' + (state.checklist && state.checklist[i] ? 'x' : ' ') + '] ' + text);
       });
       L.push('');
       L.push('---');
@@ -443,6 +467,12 @@
     L.push('📊 Похудение — день ' + (dayNo > 0 ? dayNo : 0) + '/' + totalDaysOf(state) +
            ', осталось ' + Math.max(0, S.diffDays(now, state.profile.endDate)) + ' дн.');
     if (cur) {
+      var first = state.weights[0];
+      if (Math.abs(first.kg - state.profile.startWeight) > 0.5) {
+        flags.push('🟠 Стартовый вес в профиле ' + r1(state.profile.startWeight) + ' кг, а первое взвешивание — ' +
+          r1(first.kg) + ' кг. Плановая кривая смещена на ' + r1(Math.abs(first.kg - state.profile.startWeight)) +
+          ' кг, поэтому «опережение/отставание» врёт. Поправь стартовый вес в «Прогресс → Профиль».');
+      }
       var delta = cur.kg - S.planWeight(cur.d);
       L.push('⚖️ ' + r1(cur.kg) + ' кг (' + S.human(cur.d) + '), сброшено ' +
              r1(state.profile.startWeight - cur.kg) + ' кг из ' + r1(state.profile.startWeight - state.profile.goalWeight) +
@@ -488,9 +518,7 @@
       });
       var meals = {};
       Object.keys((x.m) || {}).forEach(function (k) { if (x.m[k]) meals[k] = x.m[k]; });
-      var empty = !x.w.done && !x.w.skipped && !Object.keys(ex).length && !Object.keys(meals).length &&
-                  !x.steps && !x.sleep && !x.pain && !x.energy && !x.note;
-      if (empty) return;
+      if (!dayHasContent(x)) return;
       days[d] = {
         workout: x.w.done ? 'done' : (x.w.skipped ? 'skipped' : 'partial'),
         ex: Object.keys(ex).length ? ex : undefined,

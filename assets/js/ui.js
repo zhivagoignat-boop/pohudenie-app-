@@ -320,10 +320,24 @@
       if (d.m[slot]) h += '<button class="btn-ghost small" data-clear="' + slot + '">Убрать выбор</button>';
     });
 
-    h += '<h2>Своё / добор</h2><div class="card"><div class="grid2">' +
+    h += '<h2>Своё / добор</h2><div class="card">' +
+      '<div class="grid2">' +
       '<label class="field"><span>Доп. калории</span><input type="number" inputmode="numeric" data-free="freeKcal" value="' + (d.m.freeKcal || '') + '" placeholder="0"></label>' +
       '<label class="field"><span>Доп. белок, г</span><input type="number" inputmode="numeric" data-free="freeP" value="' + (d.m.freeP || '') + '" placeholder="0"></label>' +
-      '</div></div>';
+      '</div>' +
+      (d.m.freeKcal ? '<button class="btn-ghost small" id="freeReset">Обнулить добор</button>' : '') +
+      '</div>';
+
+    h += '<h2>🍴 Ел не дома</h2><div class="card">' +
+      '<p class="small muted">Кафе, ресторан, командировка. Тапни по блюду — калории и белок добавятся в «добор». ' +
+      'Цифры примерные, и это нормально: важен порядок, а не точность. Лучше грубая оценка, чем пустой день.</p>' +
+      '<div class="chips">' +
+      D.eatingOut.map(function (o, i) {
+        return '<button class="chip" data-out="' + i + '">' + esc(o.n) + ' <b>' + o.k + '</b></button>';
+      }).join('') +
+      '</div>' +
+      '<p class="small muted" style="margin-bottom:0">Порция больше обычной — тапни дважды. Половина — тапни и убери половину в поле выше.</p>' +
+      '</div>';
 
     h += '<h2>Меню БодиБалансом</h2><div class="card"><p class="small muted">Впиши названия блюд из фото — они попадут в отчёт и помогут не повторяться.</p>';
     [['lunch', 'Обед'], ['dinner', 'Ужин']].forEach(function (pair) {
@@ -357,6 +371,20 @@
     });
     $$('[data-bbpick]', v).forEach(function (sel) {
       sel.addEventListener('change', function () { S.day(cur, true).m[sel.dataset.bbpick + 'BB'] = +sel.value; S.save(); render(); });
+    });
+    $$('[data-out]', v).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var o = D.eatingOut[+b.dataset.out], day = S.day(cur, true);
+        day.m.freeKcal = (+day.m.freeKcal || 0) + o.k;
+        day.m.freeP = (+day.m.freeP || 0) + o.p;
+        S.save(); TG.haptic('light');
+        toast('+' + o.k + ' ккал · ' + esc(o.n));
+        render();
+      });
+    });
+    var fr = $('#freeReset', v);
+    if (fr) fr.addEventListener('click', function () {
+      var day = S.day(cur, true); day.m.freeKcal = null; day.m.freeP = null; S.save(); render();
     });
     $$('[data-free]', v).forEach(function (inp) {
       inp.addEventListener('change', function () { S.day(cur, true).m[inp.dataset.free] = num(inp.value); S.save(); render(); });
