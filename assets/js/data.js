@@ -6,6 +6,10 @@
   /* Параметры ПРОГРАММЫ (не личные данные).
      Личные цифры — вес, рост, возраст, даты — задаются в приложении при первом запуске
      и хранятся только на устройстве пользователя и в его облаке Telegram. */
+  /* Метка сборки: видна в «Прогрессе» и в шапке отчёта.
+     По ней сразу понятно, доехало ли обновление на телефон. */
+  var VERSION = { date: '2026-09-27', feature: 'перенос тренировок' };
+
   var PROGRAM = {
     name: 'Жизнь на похудение',
     bmr: 1800,                // база, под которую считался план
@@ -581,7 +585,7 @@
   ];
 
   var DATA = {
-    program: PROGRAM, workouts: WORKOUTS, meals: MEALS, schedule: SCHEDULE,
+    version: VERSION, program: PROGRAM, workouts: WORKOUTS, meals: MEALS, schedule: SCHEDULE,
     shoulder: SHOULDER, shopping: SHOPPING, noCook: NO_COOK, eatingOut: EATING_OUT, fiberFoods: FIBER_FOODS, fiberCombos: FIBER_COMBOS, portionHints: PORTION_HINTS, photoWeeks: PHOTO_WEEKS, checklist: CHECKLIST,
     workoutOrder: ['day1', 'day2', 'day3', 'day4']
   };

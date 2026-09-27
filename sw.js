@@ -1,5 +1,5 @@
 /* Офлайн-кэш: приложение открывается без интернета (в зале связи может не быть). */
-var CACHE = 'weightloss-v1';
+var CACHE = 'weightloss-2026-09-27';   // меняется при каждом обновлении — старый кэш удаляется
 var FILES = [
   './', './index.html', './manifest.webmanifest', './assets/icon.svg',
   './assets/css/app.css', './assets/js/data.js', './assets/js/store.js',

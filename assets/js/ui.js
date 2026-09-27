@@ -784,7 +784,7 @@
       '<label class="field"><span>Дата старта</span><input type="date" data-pf="startDate" value="' + pr.startDate + '"></label>' +
       '<label class="field"><span>Дата цели</span><input type="date" data-pf="endDate" value="' + pr.endDate + '"></label>' +
       '</div>' +
-      '<label class="field"><span>Вечерние прогулки — с кем</span><input type="text" data-pf="partner" value="' + esc(pr.partner || '') + '" placeholder="например: Ариной"></label>' +
+      '<label class="field"><span>Вечерние прогулки — с кем</span><input type="text" data-pf="partner" value="' + esc(pr.partner || '') + '" placeholder="например: Аней"></label>' +
       '<p class="small muted">Код настройки для переноса на другое устройство:</p>' +
       '<div class="row"><input type="text" id="setupOut" readonly value="' + esc(S.encodeSetup()) + '"><button id="copyCode">📋</button></div>' +
       '</details></div>';
@@ -816,6 +816,9 @@
       '<button class="btn-danger" id="resetAll">Сбросить всё</button>' +
       '</div><input type="file" id="fileIn" accept="application/json" hidden>' +
       '<p class="small muted">Данные хранятся только в этом браузере. Экспорт — резервная копия и файл для отчёта в репозитории.</p></div>';
+
+    h += '<p class="small muted" style="text-align:center;margin:18px 0 0">Версия ' + esc(D.version.date) +
+      ' · последнее: ' + esc(D.version.feature) + '</p>';
 
     var v = view('progress'); v.innerHTML = h;
     $('#pAdd', v).addEventListener('click', function () {
@@ -1123,7 +1126,7 @@
       '<label class="field"><span>Старт</span><input type="date" id="sd" value="' + (p.startDate || today) + '"></label>' +
       '<label class="field"><span>Дата цели</span><input type="date" id="ed" value="' + (p.endDate || S.addDays(today, 120)) + '"></label>' +
       '</div>' +
-      '<label class="field"><span>Вечерние прогулки — с кем (необязательно)</span><input type="text" id="pt" value="' + esc(p.partner || '') + '" placeholder="например: Ариной"></label>' +
+      '<label class="field"><span>Вечерние прогулки — с кем (необязательно)</span><input type="text" id="pt" value="' + esc(p.partner || '') + '" placeholder="например: Аней"></label>' +
       '<label class="field"><span>Пол</span></label>' + seg('sex', p.sex || 'м', [['м', 'Мужской'], ['ж', 'Женский']]) +
       '<button class="btn-primary btn-wide" id="startBtn" style="margin-top:14px">Начать программу</button>' +
       '<p class="small muted" id="setupHint" style="margin-bottom:0"></p></div>';
