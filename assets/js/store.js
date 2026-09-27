@@ -21,6 +21,7 @@
       days: {},
       photos: {},
       checklist: {},
+      settings: { photoUrl: '', photoToken: '' },
       askClaude: ''
     };
   }
@@ -81,6 +82,7 @@
   function migrate(s) {
     var base = emptyState();
     for (var k in base) if (!(k in s)) s[k] = base[k];
+    if (!s.settings) s.settings = { photoUrl: '', photoToken: '' };
     if (!s.bb.lunch) s.bb.lunch = ['', '', '', ''];
     if (!s.bb.dinner) s.bb.dinner = ['', '', '', ''];
     return s;
@@ -116,7 +118,7 @@
     if (!s.days[date] && create) {
       s.days[date] = {
         w: { done: false, skipped: false, ex: {}, cardio: { done: false, min: null } },
-        m: { breakfast: null, lunch: null, snack: null, dinner: null, extra: null, freeKcal: null, freeP: null },
+        m: { breakfast: null, lunch: null, snack: null, dinner: null, extra: null, freeKcal: null, freeP: null, add: [] },
         steps: null, sleep: null, water: null, pain: 0, energy: null, note: ''
       };
     }
@@ -145,14 +147,14 @@
   /* питание за день */
   function nutrition(date) {
     var d = day(date);
-    var sum = { kcal: 0, p: 0, f: 0, c: 0, meals: [] };
+    var sum = { kcal: 0, p: 0, f: 0, c: 0, fb: 0, meals: [] };
     if (!d) return sum;
     ['breakfast', 'lunch', 'snack', 'dinner', 'extra'].forEach(function (slot) {
       var id = d.m[slot];
       if (!id) return;
       var opt = findOption(slot, id);
       if (!opt) return;
-      sum.kcal += opt.kcal; sum.p += opt.p; sum.f += opt.f || 0; sum.c += opt.c || 0;
+      sum.kcal += opt.kcal; sum.p += opt.p; sum.f += opt.f || 0; sum.c += opt.c || 0; sum.fb += opt.fb || 0;
       var name = opt.name;
       if (opt.bb) {
         var bbIdx = d.m[slot + 'BB'];
@@ -161,8 +163,36 @@
       }
       sum.meals.push({ slot: slot, name: name, kcal: opt.kcal, p: opt.p });
     });
+    (d.m.add || []).forEach(function (a) {
+      sum.kcal += +a.k || 0; sum.p += +a.p || 0; sum.f += +a.f || 0; sum.c += +a.c || 0; sum.fb += +a.fb || 0;
+      sum.meals.push({ slot: a.src || 'add', name: a.n, kcal: +a.k || 0, p: +a.p || 0 });
+    });
     if (d.m.freeKcal) { sum.kcal += +d.m.freeKcal; sum.p += (+d.m.freeP || 0); sum.meals.push({ slot: 'free', name: 'Своё', kcal: +d.m.freeKcal, p: +d.m.freeP || 0 }); }
+    sum.fb = Math.round(sum.fb * 10) / 10;
     return sum;
+  }
+
+  /* Добавить продукт/блюдо в день (клетчатка, кафе, оценка по фото) */
+  function addFood(date, item) {
+    var d = day(date, true);
+    if (!d.m.add) d.m.add = [];
+    d.m.add.push({
+      n: item.n, k: +item.k || 0, p: +item.p || 0, f: +item.f || 0, c: +item.c || 0,
+      fb: +item.fb || 0, src: item.src || null
+    });
+    save();
+  }
+
+  function removeFood(date, index) {
+    var d = day(date, true);
+    if (d.m.add && d.m.add.length > index) { d.m.add.splice(index, 1); save(); }
+  }
+
+  /* Поиск по базе продуктов с клетчаткой */
+  function searchFood(query) {
+    var q = String(query || '').trim().toLowerCase();
+    if (!q) return [];
+    return D.fiberFoods.filter(function (f) { return f.n.toLowerCase().indexOf(q) >= 0; });
   }
 
   function findOption(slot, id) {
@@ -173,11 +203,14 @@
   }
 
   /* вес */
-  function addWeight(date, kg, note) {
+  function addWeight(date, kg, note, waist) {
     var s = load();
     var existing = s.weights.filter(function (w) { return w.d === date; })[0];
-    if (existing) { existing.kg = kg; existing.note = note || ''; }
-    else s.weights.push({ d: date, kg: kg, note: note || '' });
+    if (existing) {
+      existing.kg = kg;
+      if (note != null) existing.note = note;
+      if (waist != null) existing.waist = waist || undefined;
+    } else s.weights.push({ d: date, kg: kg, note: note || '', waist: waist || undefined });
     s.weights.sort(function (a, b) { return a.d < b.d ? -1 : 1; });
     save();
   }
@@ -284,7 +317,7 @@
   root.Store = {
     KEY: KEY, load: load, save: save, day: day, exState: exState,
     plannedWorkout: plannedWorkout, isTrainingDay: isTrainingDay,
-    nutrition: nutrition, findOption: findOption,
+    nutrition: nutrition, findOption: findOption, addFood: addFood, removeFood: removeFood, searchFood: searchFood,
     addWeight: addWeight, removeWeight: removeWeight, lastWeight: lastWeight, planWeight: planWeight,
     isConfigured: isConfigured, totalDays: totalDays, weeklyLoss: weeklyLoss, setProfile: setProfile, fill: fill,
     encodeSetup: encodeSetup, decodeSetup: decodeSetup,

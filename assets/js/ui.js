@@ -7,6 +7,7 @@
   var cur = S.today();           // выбранная дата
   var tab = 'today';
   var timer = null, timerLeft = 0;
+  var foodQuery = '', foodGroup = 'Все';   // фильтры в списке продуктов с клетчаткой
 
   /* ---------- утилиты ---------- */
   function $(sel, ctx) { return (ctx || document).querySelector(sel); }
@@ -61,8 +62,11 @@
     if (S.weekday(cur) === 1 || weighedToday) {
       h += '<div class="card" style="margin-top:12px"><h3>⚖️ Взвешивание' + (S.weekday(cur) === 1 ? ' (понедельник)' : '') + '</h3>' +
         '<p class="small muted">Утром, натощак, после туалета, без одежды, те же весы. План на сегодня: ' + r1(planNow) + ' кг.</p>' +
-        '<div class="row"><input type="number" step="0.1" inputmode="decimal" id="wIn" placeholder="' + r1(planNow) + '" value="' + (weighedToday ? weighedToday.kg : '') + '">' +
-        '<button class="btn-primary" id="wSave">Записать</button></div></div>';
+        '<div class="grid2">' +
+        '<label class="field"><span>Вес, кг</span><input type="number" step="0.1" inputmode="decimal" id="wIn" placeholder="' + r1(planNow) + '" value="' + (weighedToday ? weighedToday.kg : '') + '"></label>' +
+        '<label class="field"><span>Талия, см</span><input type="number" step="0.5" inputmode="decimal" id="waistIn" placeholder="на уровне пупка" value="' + (weighedToday && weighedToday.waist ? weighedToday.waist : '') + '"></label>' +
+        '</div>' +
+        '<button class="btn-primary btn-wide" id="wSave">Записать</button></div>';
     }
 
     // тренировка
@@ -133,7 +137,7 @@
       });
     });
     wireSeg(v, function (name, val) {
-      var day = S.day(cur, true); day[name] = val; S.save(); render();
+      var day = S.day(cur, true); day[name] = +val; S.save(); render();
     });
     $$('[data-chk]', v).forEach(function (el) {
       el.addEventListener('click', function () {
@@ -146,8 +150,13 @@
     var ws = $('#wSave', v);
     if (ws) ws.addEventListener('click', function () {
       var val = num($('#wIn', v).value);
+      var waist = num($('#waistIn', v).value);
       if (!val || val < 30 || val > 300) return toast('Введи вес в килограммах');
-      S.addWeight(cur, val); toast('Вес записан'); render();
+      if (waist && (waist < 40 || waist > 200)) return toast('Талия указывается в сантиметрах');
+      S.addWeight(cur, val, null, waist);
+      TG.haptic('success');
+      toast(waist ? 'Вес и талия записаны' : 'Вес записан');
+      render();
     });
   }
 
@@ -161,7 +170,7 @@
     $$('[data-seg]', root).forEach(function (grp) {
       grp.addEventListener('click', function (e) {
         var b = e.target.closest('button'); if (!b) return;
-        cb(grp.dataset.seg, +b.dataset.val);
+        cb(grp.dataset.seg, b.dataset.val);   // строка: числовые значения приводит вызывающий
       });
     });
   }
@@ -294,6 +303,8 @@
       '<div class="grid3" style="margin-top:10px">' +
       stat(n.p + ' г', 'белок / ' + D.program.protein[0]) + stat(n.f + ' г', 'жир / ' + D.program.fat[0]) + stat(n.c + ' г', 'углеводы / ' + D.program.carbs[0]) +
       '</div>' +
+      '<div class="row spread" style="margin-top:10px"><span>🥦 Клетчатка</span><strong>' + n.fb + ' / ' + D.program.fiberTarget + ' г</strong></div>' +
+      '<div class="meter' + (n.fb < D.program.fiber[0] ? ' warn' : '') + '"><div style="width:' + Math.min(100, n.fb / D.program.fiberTarget * 100) + '%"></div></div>' +
       '<p class="small muted" style="margin-bottom:0">Цель: ' + D.program.kcalTarget[0] + '–' + D.program.kcalTarget[1] + ' ккал (TDEE ' + D.program.tdee + ' − дефицит ' + D.program.deficit[0] + '–' + D.program.deficit[1] + ').</p>' +
       '</div>';
 
@@ -328,6 +339,57 @@
       (d.m.freeKcal ? '<button class="btn-ghost small" id="freeReset">Обнулить добор</button>' : '') +
       '</div>';
 
+    // что уже добавлено сегодня
+    var added = d.m.add || [];
+    if (added.length) {
+      h += '<h2>Добавлено сегодня</h2><div class="card">';
+      added.forEach(function (a, i) {
+        h += '<div class="row spread" style="padding:6px 0;border-bottom:1px solid var(--line)">' +
+          '<span class="small">' + (a.src === 'photo' ? '📷 ' : (a.src === 'fiber' ? '🥦 ' : '🍴 ')) + esc(a.n) + '</span>' +
+          '<span class="small muted" style="white-space:nowrap">' + a.k + ' ккал' + (a.fb ? ' · ' + a.fb + ' г кл.' : '') +
+          ' <button class="btn-ghost small" data-rmfood="' + i + '">✕</button></span></div>';
+      });
+      h += '</div>';
+    }
+
+    // ----- клетчатка -----
+    h += '<h2>🥦 Добор клетчатки</h2><div class="card">' +
+      '<p class="small muted">Цель ' + D.program.fiberTarget + ' г в день, сейчас <strong>' + n.fb + ' г</strong>. ' +
+      'Клетчатка держит сытость на дефиците и спасает пищеварение, когда еда в основном готовая.</p>' +
+      '<div class="chips">' + D.fiberCombos.map(function (c, i) {
+        var fb = c.items.reduce(function (acc, nm) {
+          var f = D.fiberFoods.filter(function (x) { return x.n === nm; })[0];
+          return acc + (f ? f.fb : 0);
+        }, 0);
+        return '<button class="chip" data-combo="' + i + '">' + esc(c.n) + ' <b>+' + Math.round(fb * 10) / 10 + ' г</b></button>';
+      }).join('') + '</div>' +
+      '<label class="field" style="margin-top:10px"><span>Найти продукт</span>' +
+      '<input type="text" id="fiberSearch" placeholder="яблоко, нут, отруби…" value="' + esc(foodQuery) + '" autocomplete="off"></label>' +
+      '<div class="seg" data-seg="fgroup" style="margin-bottom:10px">' +
+      ['Все'].concat(fiberGroups()).map(function (g) {
+        return '<button data-val="' + esc(g) + '" class="' + (foodGroup === g ? 'on' : '') + '">' + esc(g) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="chips">' + fiberList().map(function (f) {
+        return '<button class="chip" data-food="' + esc(f.n) + '">' + esc(f.n) + ' <b>' + f.fb + ' г</b></button>';
+      }).join('') + '</div>' +
+      (fiberList().length ? '' : '<p class="small muted">Ничего не нашлось. Впиши вручную в «Своё / добор» ниже.</p>') +
+      '<p class="small muted" style="margin-bottom:0">Значения — на типовую порцию (указана при добавлении).</p>' +
+      '</div>';
+
+    // ----- оценка по фото -----
+    var photoCfg = (S.load().settings || {}).photoUrl;
+    h += '<h2>📷 Оценить по фото</h2><div class="card">';
+    if (photoCfg) {
+      h += '<p class="small muted">Сфотографируй тарелку — вернутся блюда с КБЖУ и клетчаткой. Оценка примерная: модель не знает, сколько масла на сковороде.</p>' +
+        '<button class="btn-primary btn-wide" id="photoBtn">Сделать фото или выбрать</button>' +
+        '<input type="file" id="photoIn" accept="image/*" capture="environment" hidden>' +
+        '<div id="photoOut"></div>';
+    } else {
+      h += '<p class="small muted">Не настроено. Нужен свой сервис-посредник с ключом Claude API — иначе ключ пришлось бы положить в открытый код приложения, и им смог бы пользоваться кто угодно.</p>' +
+        '<button class="btn-wide" data-goto="progress">Настроить в «Прогрессе»</button>';
+    }
+    h += '</div>';
+
     h += '<h2>🍴 Ел не дома</h2><div class="card">' +
       '<p class="small muted">Кафе, ресторан, командировка. Тапни по блюду — калории и белок добавятся в «добор». ' +
       'Цифры примерные, и это нормально: важен порядок, а не точность. Лучше грубая оценка, чем пустой день.</p>' +
@@ -358,6 +420,7 @@
 
     var v = view('food'); v.innerHTML = h;
 
+    wireSeg(v, function (name, val) { if (name === 'fgroup') { foodGroup = String(val); render(); } });
     $$('[data-pick]', v).forEach(function (el) {
       el.addEventListener('click', function () {
         var day = S.day(cur, true), slot = el.dataset.pick;
@@ -372,6 +435,44 @@
     $$('[data-bbpick]', v).forEach(function (sel) {
       sel.addEventListener('change', function () { S.day(cur, true).m[sel.dataset.bbpick + 'BB'] = +sel.value; S.save(); render(); });
     });
+    // клетчатка: наборы, поиск, фильтр, продукты
+    $$('[data-combo]', v).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var combo = D.fiberCombos[+b.dataset.combo];
+        combo.items.forEach(function (nm) {
+          var f = D.fiberFoods.filter(function (x) { return x.n === nm; })[0];
+          if (f) S.addFood(cur, { n: f.n + ' (' + f.por + ')', k: f.k, p: f.p, f: f.f, c: f.c, fb: f.fb, src: 'fiber' });
+        });
+        TG.haptic('success'); toast(combo.n + ' добавлен'); render();
+      });
+    });
+    $$('[data-food]', v).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var f = D.fiberFoods.filter(function (x) { return x.n === b.dataset.food; })[0];
+        if (!f) return;
+        S.addFood(cur, { n: f.n + ' (' + f.por + ')', k: f.k, p: f.p, f: f.f, c: f.c, fb: f.fb, src: 'fiber' });
+        TG.haptic('light'); toast('+' + f.fb + ' г клетчатки · ' + f.k + ' ккал');
+        render();
+      });
+    });
+    var fs = $('#fiberSearch', v);
+    if (fs) {
+      fs.addEventListener('input', function () {
+        foodQuery = fs.value;
+        render();
+        var again = $('#fiberSearch');
+        if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+      });
+    }
+    $$('[data-rmfood]', v).forEach(function (b) {
+      b.addEventListener('click', function () { S.removeFood(cur, +b.dataset.rmfood); render(); });
+    });
+    var pb = $('#photoBtn', v);
+    if (pb) {
+      pb.addEventListener('click', function () { $('#photoIn', v).click(); });
+      $('#photoIn', v).addEventListener('change', function (e) { estimatePhoto(e.target.files[0]); });
+    }
+
     $$('[data-out]', v).forEach(function (b) {
       b.addEventListener('click', function () {
         var o = D.eatingOut[+b.dataset.out], day = S.day(cur, true);
@@ -397,6 +498,115 @@
     });
   }
 
+  function fiberGroups() {
+    var out = [];
+    D.fiberFoods.forEach(function (f) { if (out.indexOf(f.g) < 0) out.push(f.g); });
+    return out;
+  }
+
+  function fiberList() {
+    var q = foodQuery.trim().toLowerCase();
+    return D.fiberFoods.filter(function (f) {
+      if (foodGroup !== 'Все' && f.g !== foodGroup) return false;
+      return !q || f.n.toLowerCase().indexOf(q) >= 0;
+    });
+  }
+
+  /* ---------- ОЦЕНКА ПО ФОТО ----------
+     Фото уменьшается на устройстве и уходит в свой сервис-посредник,
+     который и хранит ключ Claude API. В самом приложении ключа нет. */
+  function estimatePhoto(file) {
+    if (!file) return;
+    var out = $('#photoOut');
+    var cfg = S.load().settings || {};
+    if (!cfg.photoUrl) return;
+    out.innerHTML = '<p class="small muted">Сжимаю фото…</p>';
+
+    shrinkImage(file, 1024, function (dataUrl, err) {
+      if (err) { out.innerHTML = '<p class="small" style="color:var(--danger)">Не удалось прочитать фото: ' + esc(err) + '</p>'; return; }
+      out.innerHTML = '<p class="small muted">Отправляю на оценку… это 5–15 секунд.</p>';
+      var base64 = dataUrl.split(',')[1];
+      var headers = { 'Content-Type': 'application/json' };
+      if (cfg.photoToken) headers['Authorization'] = 'Bearer ' + cfg.photoToken;
+
+      fetch(cfg.photoUrl, {
+        method: 'POST', headers: headers,
+        body: JSON.stringify({ image: base64, media_type: 'image/jpeg' })
+      }).then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(r.status + ': ' + t.slice(0, 200)); });
+        return r.json();
+      }).then(function (data) {
+        renderPhotoResult(data, out);
+      }).catch(function (e) {
+        out.innerHTML = '<p class="small" style="color:var(--danger)">Не вышло: ' + esc(e.message) + '</p>' +
+          '<p class="small muted">Проверь адрес сервиса в «Прогресс → Оценка по фото». Пока можно добавить блюдо кнопками ниже.</p>';
+      });
+    });
+  }
+
+  function renderPhotoResult(data, out) {
+    var items = (data && data.items) || [];
+    if (!items.length) {
+      out.innerHTML = '<p class="small muted">Модель не нашла еду на фото. Попробуй снять ближе и при свете.</p>';
+      return;
+    }
+    var html = '<div class="card flat" style="margin-top:10px">';
+    if (data.comment) html += '<p class="small muted">' + esc(data.comment) + '</p>';
+    items.forEach(function (it, i) {
+      html += '<div class="row spread" style="padding:6px 0;border-bottom:1px solid var(--line)">' +
+        '<span class="small">' + esc(it.n) + (it.portion ? ' <span class="muted">(' + esc(it.portion) + ')</span>' : '') + '</span>' +
+        '<span class="small muted" style="white-space:nowrap">' + Math.round(it.k) + ' ккал · ' + Math.round(it.p) + ' г б.' +
+        '<button class="btn-ghost small" data-addphoto="' + i + '">＋</button></span></div>';
+    });
+    var tot = items.reduce(function (a, it) {
+      return { k: a.k + (+it.k || 0), p: a.p + (+it.p || 0), fb: a.fb + (+it.fb || 0) };
+    }, { k: 0, p: 0, fb: 0 });
+    html += '<div class="row spread" style="margin-top:8px"><strong class="small">Всего</strong>' +
+      '<strong class="small">' + Math.round(tot.k) + ' ккал · ' + Math.round(tot.p) + ' г белка · ' + Math.round(tot.fb) + ' г кл.</strong></div>' +
+      '<button class="btn-primary btn-wide" id="addAllPhoto" style="margin-top:8px">Добавить всё в день</button>' +
+      '<p class="small muted" style="margin-bottom:0">Это оценка по виду блюда. Если знаешь состав точнее — поправь в «Своё / добор».</p></div>';
+    out.innerHTML = html;
+
+    $$('[data-addphoto]', out).forEach(function (b) {
+      b.addEventListener('click', function () {
+        addPhotoItem(items[+b.dataset.addphoto]);
+        toast('Добавлено'); render();
+      });
+    });
+    $('#addAllPhoto', out).addEventListener('click', function () {
+      items.forEach(addPhotoItem);
+      TG.haptic('success'); toast('Добавлено блюд: ' + items.length); render();
+    });
+  }
+
+  function addPhotoItem(it) {
+    S.addFood(cur, {
+      n: it.n + (it.portion ? ' (' + it.portion + ')' : ''),
+      k: it.k, p: it.p, f: it.f, c: it.c, fb: it.fb, src: 'photo'
+    });
+  }
+
+  /* Уменьшаем фото до 1024 px — меньше трафика и дешевле запрос */
+  function shrinkImage(file, maxSide, cb) {
+    var reader = new FileReader();
+    reader.onerror = function () { cb(null, 'файл не читается'); };
+    reader.onload = function () {
+      var img = new Image();
+      img.onerror = function () { cb(null, 'это не изображение'); };
+      img.onload = function () {
+        var scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        var w = Math.round(img.width * scale), hh = Math.round(img.height * scale);
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = hh;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, hh);
+        try { cb(canvas.toDataURL('image/jpeg', 0.8)); }
+        catch (e) { cb(null, e.message); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
   /* ---------- ПРОГРЕСС ---------- */
   function renderProgress() {
     var st = S.load();
@@ -408,13 +618,23 @@
     h += '<div class="card">' + chartSVG() + '<p class="small muted" style="text-align:center;margin:4px 0 0">— факт · - - план (' + st.profile.startWeight + ' → ' + st.profile.goalWeight + ' кг)</p></div>';
 
     if (st.weights.length) {
-      h += '<h2>История веса</h2><div class="card"><table><tr><th>Дата</th><th>Вес</th><th>Δ</th><th>к плану</th><th></th></tr>';
+      var anyWaist = st.weights.some(function (w) { return w.waist; });
+      h += '<h2>История</h2><div class="card"><table><tr><th>Дата</th><th>Вес</th><th>Δ</th>' +
+        (anyWaist ? '<th>Талия</th>' : '<th>к плану</th>') + '<th></th></tr>';
       st.weights.slice().reverse().forEach(function (w, i, arr) {
         var prev = arr[i + 1];
         var dl = w.kg - S.planWeight(w.d);
+        var waistCell;
+        if (anyWaist) {
+          var pw = null;
+          for (var j = i + 1; j < arr.length; j++) if (arr[j].waist) { pw = arr[j].waist; break; }
+          waistCell = w.waist ? r1(w.waist) + (pw ? ' <span class="small muted">(' + (w.waist - pw > 0 ? '+' : '') + r1(w.waist - pw) + ')</span>' : '') : '—';
+        } else {
+          waistCell = '<span style="color:' + (dl > 0.5 ? 'var(--warn)' : 'var(--accent)') + '">' + (dl > 0 ? '+' : '') + r1(dl) + '</span>';
+        }
         h += '<tr><td>' + S.human(w.d) + '</td><td><strong>' + r1(w.kg) + '</strong></td>' +
           '<td>' + (prev ? (w.kg - prev.kg > 0 ? '+' : '') + r1(w.kg - prev.kg) : '—') + '</td>' +
-          '<td style="color:' + (dl > 0.5 ? 'var(--warn)' : 'var(--accent)') + '">' + (dl > 0 ? '+' : '') + r1(dl) + '</td>' +
+          '<td>' + waistCell + '</td>' +
           '<td><button class="btn-ghost small" data-del="' + w.d + '">✕</button></td></tr>';
       });
       h += '</table></div>';
@@ -453,6 +673,13 @@
       '<div class="row spread small"><span class="muted">Старт</span><span>' + S.human(pr.startDate) + ' · ' + r1(pr.startWeight) + ' кг</span></div>' +
       '<div class="row spread small"><span class="muted">Цель</span><span>' + S.human(pr.endDate) + ' · ' + r1(pr.goalWeight) + ' кг</span></div>' +
       '<div class="row spread small"><span class="muted">Темп по плану</span><span>' + S.weeklyLoss() + ' кг/нед · ' + S.totalDays() + ' дней</span></div>' +
+      (function () {
+        var ws2 = st.weights.filter(function (w) { return w.waist; });
+        if (!ws2.length) return '<p class="small muted" style="margin:6px 0 0">Талия ещё не измерена — впиши её при взвешивании, на дефиците она меняется раньше веса.</p>';
+        var f = ws2[0], l = ws2[ws2.length - 1];
+        return '<div class="row spread small"><span class="muted">Талия</span><span>' + r1(l.waist) + ' см' +
+          (ws2.length > 1 ? ' (' + (l.waist - f.waist > 0 ? '+' : '') + r1(l.waist - f.waist) + ' см от старта)' : '') + '</span></div>';
+      })() +
       '<details><summary>Изменить</summary><div class="grid2" style="margin-top:8px">' +
       '<label class="field"><span>Стартовый вес, кг</span><input type="number" step="0.1" inputmode="decimal" data-pf="startWeight" value="' + (pr.startWeight || '') + '"></label>' +
       '<label class="field"><span>Цель, кг</span><input type="number" step="0.1" inputmode="decimal" data-pf="goalWeight" value="' + (pr.goalWeight || '') + '"></label>' +
@@ -465,6 +692,15 @@
       '<p class="small muted">Код настройки для переноса на другое устройство:</p>' +
       '<div class="row"><input type="text" id="setupOut" readonly value="' + esc(S.encodeSetup()) + '"><button id="copyCode">📋</button></div>' +
       '</details></div>';
+
+    // сервис оценки по фото
+    var cfg = st.settings || {};
+    h += '<h2>📷 Оценка по фото</h2><div class="card">' +
+      '<p class="small muted">Адрес своего сервиса-посредника, который хранит ключ Claude API и считает КБЖУ по фотографии. ' +
+      'Как его поднять за пять минут — в <code>worker/README.md</code> репозитория. Пусто — блок «Оценить по фото» в «Еде» скрыт.</p>' +
+      '<label class="field"><span>Адрес сервиса</span><input type="text" data-cfg="photoUrl" value="' + esc(cfg.photoUrl || '') + '" placeholder="https://…workers.dev" autocapitalize="off" spellcheck="false"></label>' +
+      '<label class="field"><span>Пароль (если задан)</span><input type="text" data-cfg="photoToken" value="' + esc(cfg.photoToken || '') + '" placeholder="необязательно" autocapitalize="off" spellcheck="false"></label>' +
+      '</div>';
 
     // синхронизация с Telegram
     if (TG.active) {
@@ -499,6 +735,14 @@
         var w = el.dataset.photo, s = S.load();
         if (s.photos[w]) delete s.photos[w]; else s.photos[w] = { date: S.today() };
         S.save(); render();
+      });
+    });
+    $$('[data-cfg]', v).forEach(function (inp) {
+      inp.addEventListener('change', function () {
+        var s2 = S.load();
+        if (!s2.settings) s2.settings = {};
+        s2.settings[inp.dataset.cfg] = inp.value.trim();
+        S.save(); toast('Сохранено');
       });
     });
     $$('[data-pf]', v).forEach(function (inp) {

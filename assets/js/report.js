@@ -27,14 +27,14 @@
   /* Питание конкретного дня по ПЕРЕДАННОМУ state (не по глобальному хранилищу) */
   function nutritionOf(state, date) {
     var d = state.days[date];
-    var sum = { kcal: 0, p: 0, f: 0, c: 0, meals: [] };
+    var sum = { kcal: 0, p: 0, f: 0, c: 0, fb: 0, meals: [] };
     if (!d || !d.m) return sum;
     ['breakfast', 'lunch', 'snack', 'dinner', 'extra'].forEach(function (slot) {
       var id = d.m[slot];
       if (!id) return;
       var opt = S.findOption(slot, id);
       if (!opt) return;
-      sum.kcal += opt.kcal; sum.p += opt.p; sum.f += opt.f || 0; sum.c += opt.c || 0;
+      sum.kcal += opt.kcal; sum.p += opt.p; sum.f += opt.f || 0; sum.c += opt.c || 0; sum.fb += opt.fb || 0;
       var name = opt.name;
       if (opt.bb) {
         var i = d.m[slot + 'BB'] || 0;
@@ -43,10 +43,15 @@
       }
       sum.meals.push({ slot: slot, name: name, kcal: opt.kcal, p: opt.p });
     });
+    (d.m.add || []).forEach(function (a) {
+      sum.kcal += +a.k || 0; sum.p += +a.p || 0; sum.f += +a.f || 0; sum.c += +a.c || 0; sum.fb += +a.fb || 0;
+      sum.meals.push({ slot: a.src || 'add', name: a.n, kcal: +a.k || 0, p: +a.p || 0 });
+    });
     if (d.m.freeKcal) {
       sum.kcal += +d.m.freeKcal; sum.p += (+d.m.freeP || 0);
       sum.meals.push({ slot: 'free', name: 'Своё', kcal: +d.m.freeKcal, p: +d.m.freeP || 0 });
     }
+    sum.fb = Math.round(sum.fb * 10) / 10;
     return sum;
   }
 
@@ -125,18 +130,25 @@
                ' (цель — ' + S.human(state.profile.endDate) + ' ' + S.parse(state.profile.endDate).getFullYear() + ') |');
       }
     }
+    var waists = ws.filter(function (w) { return w.waist; });
+    if (waists.length) {
+      var fw = waists[0], lw = waists[waists.length - 1];
+      L.push('| Талия | **' + r1(lw.waist) + ' см**' +
+        (waists.length > 1 ? ' (' + sign(lw.waist - fw.waist) + ' см от ' + r1(fw.waist) + ')' : '') + ' |');
+    }
     L.push('');
     L.push('**Последние взвешивания:**');
     L.push('');
-    L.push('| Дата | Вес | Δ к пред. | Δ к плану |');
-    L.push('|---|---|---|---|');
+    var anyWaist = ws.some(function (w) { return w.waist; });
+    L.push('| Дата | Вес | Δ к пред. | Δ к плану |' + (anyWaist ? ' Талия |' : ''));
+    L.push('|---|---|---|---|' + (anyWaist ? '---|' : ''));
     var tail = ws.slice(Math.max(0, ws.length - 8));
     tail.forEach(function (w, i) {
       var prev = i > 0 ? tail[i - 1] : null;
       var idxAll = ws.indexOf(w);
       if (!prev && idxAll > 0) prev = ws[idxAll - 1];
       L.push('| ' + S.human(w.d) + ' | ' + r1(w.kg) + ' кг | ' + (prev ? sign(w.kg - prev.kg) : '—') +
-             ' | ' + sign(w.kg - S.planWeight(w.d)) + ' |' + (w.note ? ' ' : ''));
+             ' | ' + sign(w.kg - S.planWeight(w.d)) + ' |' + (anyWaist ? ' ' + (w.waist ? r1(w.waist) + ' см' : '—') + ' |' : ''));
     });
     L.push('');
   }
@@ -276,12 +288,12 @@
   function nutritionBlock(state, dates, L) {
     var p = D.program;
     var win = lastN(dates, 14);
-    var logged = [], kcalSum = 0, pSum = 0, inRange = 0, lowP = 0;
+    var logged = [], kcalSum = 0, pSum = 0, fbSum = 0, inRange = 0, lowP = 0;
     win.forEach(function (date) {
       var n = nutritionOf(state, date);
       if (!n.kcal) return;
       logged.push({ d: date, n: n });
-      kcalSum += n.kcal; pSum += n.p;
+      kcalSum += n.kcal; pSum += n.p; fbSum += n.fb || 0;
       if (n.kcal >= p.kcalTarget[0] - 150 && n.kcal <= p.kcalHardMax) inRange++;
       if (n.p < p.proteinMin) lowP++;
     });
@@ -289,6 +301,7 @@
     L.push('');
     if (!logged.length) { L.push('_За последние 14 дней питание не отмечалось._'); L.push(''); return { logged: 0 }; }
     var avgK = Math.round(kcalSum / logged.length), avgP = Math.round(pSum / logged.length);
+    var avgFb = Math.round(fbSum / logged.length * 10) / 10;
     L.push('| Параметр | Факт | Цель |');
     L.push('|---|---|---|');
     L.push('| Дней отмечено | ' + logged.length + ' из ' + win.length + ' | все |');
@@ -296,6 +309,7 @@
     L.push('| Средний белок | **' + avgP + ' г** | ' + p.protein[0] + '–' + p.protein[1] + ' (минимум ' + p.proteinMin + ') |');
     L.push('| Дней в коридоре калорий | ' + inRange + '/' + logged.length + ' | — |');
     L.push('| Дней с белком ниже ' + p.proteinMin + ' г | ' + lowP + '/' + logged.length + ' | 0 |');
+    L.push('| Клетчатка (среднее) | **' + avgFb + ' г** | ' + p.fiber[0] + '–' + p.fiber[1] + ' |');
     L.push('');
     L.push('**Последние дни:**');
     L.push('');
@@ -306,7 +320,7 @@
              x.n.meals.map(function (m) { return m.name; }).join(' · ') + ' |');
     });
     L.push('');
-    return { logged: logged.length, avgK: avgK, avgP: avgP, lowP: lowP, total: win.length };
+    return { logged: logged.length, avgK: avgK, avgP: avgP, avgFb: avgFb, lowP: lowP, total: win.length };
   }
 
   function regimeBlock(state, dates, L) {
@@ -396,6 +410,8 @@
     if (wk.planned && pct(wk.done, wk.planned) < 80) flags.push('🔴 Выполнено только ' + pct(wk.done, wk.planned) + '% обязательных тренировок.');
     shoulderAlerts.forEach(function (a) { flags.push('🔴 ' + a); });
     if (nut.logged && nut.lowP > nut.logged / 2) flags.push('🔴 Белок ниже ' + p.proteinMin + ' г в большинстве дней — на дефиците это потеря мышц. Решение по плану: протеиновый перекус (30 г + молоко + банан).');
+    if (nut.logged && nut.avgFb < p.fiber[0]) flags.push('🟠 Клетчатки в среднем ' + nut.avgFb + ' г при норме ' + p.fiber[0] + '–' + p.fiber[1] +
+      ' — на готовой еде это обычное дело. Овощи, бобовые, отруби и ягоды закрывают разрыв без готовки.');
     if (nut.logged === 0) flags.push('🟠 Питание не отмечается — непонятно, держится ли коридор 2200–2300 ккал.');
     if (reg.steps && reg.steps < 7000) flags.push('🟠 Средние шаги ' + reg.steps + ' — TDEE 2700 посчитан под 10 000 шагов.');
     if (reg.sleep && reg.sleep < 7) flags.push('🟠 Сон ' + reg.sleep + ' ч — на дефиците это бьёт по восстановлению и голоду.');
@@ -467,12 +483,8 @@
     L.push('📊 Похудение — день ' + (dayNo > 0 ? dayNo : 0) + '/' + totalDaysOf(state) +
            ', осталось ' + Math.max(0, S.diffDays(now, state.profile.endDate)) + ' дн.');
     if (cur) {
-      var first = state.weights[0];
-      if (Math.abs(first.kg - state.profile.startWeight) > 0.5) {
-        flags.push('🟠 Стартовый вес в профиле ' + r1(state.profile.startWeight) + ' кг, а первое взвешивание — ' +
-          r1(first.kg) + ' кг. Плановая кривая смещена на ' + r1(Math.abs(first.kg - state.profile.startWeight)) +
-          ' кг, поэтому «опережение/отставание» врёт. Поправь стартовый вес в «Прогресс → Профиль».');
-      }
+      var lastWaist = (state.weights.filter(function (w) { return w.waist; }).pop() || {}).waist;
+      if (lastWaist) L.push('📏 Талия ' + r1(lastWaist) + ' см');
       var delta = cur.kg - S.planWeight(cur.d);
       L.push('⚖️ ' + r1(cur.kg) + ' кг (' + S.human(cur.d) + '), сброшено ' +
              r1(state.profile.startWeight - cur.kg) + ' кг из ' + r1(state.profile.startWeight - state.profile.goalWeight) +
@@ -493,12 +505,13 @@
     });
     L.push(gaps.length ? '🚨 Плечо, пробелы: ' + gaps.join(', ') : '🚨 Плечо: критичные упражнения в норме');
 
-    var logged = 0, kcal = 0, prot = 0;
+    var logged = 0, kcal = 0, prot = 0, fiber = 0;
     lastN(dates, 14).forEach(function (date) {
       var n = nutritionOf(state, date);
-      if (n.kcal) { logged++; kcal += n.kcal; prot += n.p; }
+      if (n.kcal) { logged++; kcal += n.kcal; prot += n.p; fiber += n.fb || 0; }
     });
-    L.push(logged ? '🍽️ Среднее за 14 дн.: ' + Math.round(kcal / logged) + ' ккал, ' + Math.round(prot / logged) + ' г белка (' + logged + ' дн.)'
+    L.push(logged ? '🍽️ Среднее за 14 дн.: ' + Math.round(kcal / logged) + ' ккал, ' + Math.round(prot / logged) + ' г белка, ' +
+                     Math.round(fiber / logged) + ' г клетчатки (' + logged + ' дн.)'
                   : '🍽️ Питание не отмечалось');
     if (state.askClaude && state.askClaude.trim()) L.push('❓ ' + state.askClaude.trim().split('\n').join('; '));
     L.push('');
@@ -526,6 +539,8 @@
         meals: Object.keys(meals).length ? meals : undefined,
         kcal: nutritionOf(state, d).kcal || undefined,
         protein: nutritionOf(state, d).p || undefined,
+        fiber: nutritionOf(state, d).fb || undefined,
+        added: (x.m && x.m.add && x.m.add.length) ? x.m.add.map(function (a) { return a.n + ' ' + a.k + 'к'; }) : undefined,
         steps: x.steps || undefined, sleep: x.sleep || undefined,
         pain: x.pain || undefined, energy: x.energy || undefined, note: x.note || undefined
       };
