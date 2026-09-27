@@ -7,7 +7,8 @@
   var cur = S.today();           // выбранная дата
   var tab = 'today';
   var timer = null, timerLeft = 0;
-  var foodQuery = '', foodGroup = 'Все';   // фильтры в списке продуктов с клетчаткой
+  var foodQuery = '', foodGroup = 'Все';
+  var movePicker = false;                 // открыт ли выбор даты для переноса тренировки   // фильтры в списке продуктов с клетчаткой
 
   /* ---------- утилиты ---------- */
   function $(sel, ctx) { return (ctx || document).querySelector(sel); }
@@ -26,7 +27,9 @@
     var sch = D.schedule[S.weekday(cur)];
     var dayNo = S.diffDays(S.load().profile.startDate, cur) + 1;
     $('#curDate').textContent = S.human(cur) + (cur === S.today() ? ' · сегодня' : '');
-    var type = sch.type === 'train' ? 'тренировка' : (sch.type === 'optional' ? 'опционально' : 'восстановление');
+    var wkToday = S.plannedWorkout(cur);
+    var type = wkToday ? (wkToday.optional ? 'опционально' : 'тренировка') : 'восстановление';
+    if (S.movedAt(cur) !== null) type += ' ⇄';
     $('#curMeta').textContent = sch.name + ' · ' + type + (dayNo > 0 && dayNo <= S.totalDays() ? ' · день ' + dayNo + '/' + S.totalDays() : '');
     var st = S.load();
     var last = S.lastWeight();
@@ -194,7 +197,12 @@
     h += '<div class="card"><div class="row spread"><strong>' + esc(wk.title) + '</strong>' +
       '<span class="badge">' + wk.duration + ' мин</span></div>' +
       '<p class="small muted">' + esc(wk.note) + '</p>' +
-      '<div class="row" style="margin-top:8px"><button id="restT" class="btn-ghost">⏱ Отдых 60 сек</button><span id="restV" class="small muted"></span></div></div>';
+      (S.movedAt(cur) ? '<p class="small" style="color:var(--accent2)">⇄ Перенесена с другого дня</p>' : '') +
+      '<div class="row" style="margin-top:8px"><button id="restT" class="btn-ghost">⏱ Отдых 60 сек</button><span id="restV" class="small muted"></span></div>' +
+      (d.w.done ? '' : '<button class="btn-wide" id="moveBtn" style="margin-top:8px">⇄ Перенести на другой день</button>') +
+      (S.movedAt(cur) ? '<button class="btn-ghost btn-wide small" id="moveReset" style="margin-top:6px">Вернуть по расписанию</button>' : '') +
+      movePickerHtml() +
+      '</div>';
 
     wk.exercises.forEach(function (e, i) {
       var st = S.exState(cur, e.id, true);
@@ -264,6 +272,60 @@
       S.save(); render();
     });
     $('#restT', v).addEventListener('click', startTimer);
+    var mb = $('#moveBtn', v);
+    if (mb) mb.addEventListener('click', function () { movePicker = !movePicker; render(); });
+    var mr = $('#moveReset', v);
+    if (mr) mr.addEventListener('click', function () { S.clearMove(cur); toast('Вернул по расписанию'); render(); });
+    $$('[data-moveto]', v).forEach(function (b) {
+      b.addEventListener('click', function () {
+        try {
+          var res = S.moveWorkout(cur, b.dataset.moveto);
+          movePicker = false;
+          TG.haptic('success');
+          toast(res.swapped ? 'Поменял местами с «' + res.swapped.dayName + '»' : 'Перенесено на ' + S.human(b.dataset.moveto));
+          cur = b.dataset.moveto;
+          render();
+        } catch (e) { TG.alert(e.message); }
+      });
+    });
+  }
+
+  /* Выбор новой даты: ближайшие 7 дней с подсказкой, что там уже стоит */
+  function movePickerHtml() {
+    if (!movePicker) return '';
+    var h = '<div class="card flat" style="margin-top:10px"><strong class="small">Куда перенести</strong>';
+    var found = 0;
+    for (var i = 1; i <= 7; i++) {
+      var date = S.addDays(cur, i);
+      var there = S.plannedWorkout(date);
+      var dayRec = S.day(date);
+      if (dayRec && dayRec.w && dayRec.w.done) continue;          // туда уже отходили
+      found++;
+      var busy = there && !there.optional;
+      var streak = neighbourTraining(date);
+      var warn = streak >= 2 ? '⚠️ будет ' + (streak + 1) + ' тренировки подряд' : (streak === 1 ? '⚠️ подряд с соседним днём' : '');
+      h += '<div class="opt" data-moveto="' + date + '"><span class="dot"></span>' +
+        '<span class="t small"><strong>' + S.human(date) + '</strong>' +
+        '<br><span class="muted">' + (there ? 'сейчас ' + there.title.split(' — ')[0] + (busy ? ' · поменяются местами' : '') : 'сейчас день отдыха') + '</span>' +
+        (warn ? '<br><span style="color:var(--warn)">' + warn + '</span>' : '') +
+        '</span><span class="k">⇄</span></div>';
+    }
+    if (!found) h += '<p class="small muted">Свободных дней на неделю вперёд нет.</p>';
+    h += '<p class="small muted" style="margin-bottom:0">По плану между тренировками нужен день отдыха: мышцы растут не в зале, а после него.</p></div>';
+    return h;
+  }
+
+  /* Сколько обязательных тренировок в соседние дни. День, откуда переносим,
+     не считаем: оттуда тренировка уедет. */
+  function neighbourTraining(date) {
+    var n = 0;
+    [-1, 1].forEach(function (shift) {
+      var d2 = S.addDays(date, shift);
+      if (d2 === cur) return;
+      var w = S.plannedWorkout(d2);
+      if (w && !w.optional) n++;
+    });
+    return n;
   }
 
   function lastWeightHint(exId) {
@@ -881,10 +943,19 @@
       var d = st.days[date];
       var done = d && d.w && d.w.done;
       var n = S.nutrition(date);
+      var wk2 = S.plannedWorkout(date);
       h += '<div class="opt ' + (date === cur ? 'on' : '') + '" data-day="' + date + '"><span class="dot"></span>' +
         '<span class="t"><strong>' + sch.name + '</strong> ' + S.human(date).replace(/^\S+\s/, '') +
-        '<br><span class="small muted">' + (sch.workout ? D.workouts[sch.workout].title.replace(/ —.*/, '') + ' · ' + D.workouts[sch.workout].title.split('— ')[1] : 'Восстановление · прогулка 10k') + '</span></span>' +
-        '<span class="k">' + (done ? '✅' : (sch.type === 'train' ? '⬜' : '')) + (n.kcal ? '<br>' + n.kcal + ' ккал' : '') + '</span></div>';
+        (S.movedAt(date) !== null ? ' <span class="badge">⇄ перенос</span>' : '') +
+        '<br><span class="small muted">' + (wk2 ? wk2.title.replace(/ —.*/, '') + ' · ' + wk2.title.split('— ')[1] : 'Восстановление · прогулка 10k') + '</span></span>' +
+        '<span class="k">' + (done ? '✅' : (wk2 && !wk2.optional ? '⬜' : '')) + (n.kcal ? '<br>' + n.kcal + ' ккал' : '') + '</span></div>';
+    }
+
+    var movedThisWeek = 0;
+    for (var k = 0; k < 7; k++) if (S.movedAt(S.addDays(monday, k)) !== null) movedThisWeek++;
+    if (movedThisWeek) {
+      h += '<div class="card flat"><div class="row spread"><span class="small">⇄ Переносов на этой неделе: ' + movedThisWeek + '</span>' +
+        '<button class="btn-ghost small" id="movesReset">Сбросить</button></div></div>';
     }
 
     var sch2 = D.schedule[S.weekday(cur)];
@@ -904,6 +975,12 @@
     var v = view('schedule'); v.innerHTML = h;
     $$('[data-day]', v).forEach(function (el) {
       el.addEventListener('click', function () { cur = el.dataset.day; render(); });
+    });
+    var mw = $('#movesReset', v);
+    if (mw) mw.addEventListener('click', function () {
+      TG.confirm('Вернуть все тренировки недели по расписанию?', function (yes) {
+        if (yes && S.clearMovesInWeek(monday)) { toast('Расписание восстановлено'); render(); }
+      });
     });
   }
 

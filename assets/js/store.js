@@ -20,6 +20,7 @@
       weights: [],
       days: {},
       photos: {},
+      moves: {},          // перенесённые тренировки: дата -> id тренировки или 'rest'
       checklist: {},
       settings: { photoUrl: '', photoToken: '' },
       askClaude: ''
@@ -82,6 +83,7 @@
   function migrate(s) {
     var base = emptyState();
     for (var k in base) if (!(k in s)) s[k] = base[k];
+    if (!s.moves) s.moves = {};
     if (!s.settings) s.settings = { photoUrl: '', photoToken: '' };
     if (!s.bb.lunch) s.bb.lunch = ['', '', '', ''];
     if (!s.bb.dinner) s.bb.dinner = ['', '', '', ''];
@@ -132,16 +134,89 @@
     return d.w.ex[exId] || null;
   }
 
-  /* плановая тренировка на дату */
-  function plannedWorkout(date) {
-    var wd = weekday(date);
-    var sch = D.schedule[wd];
+  /* Тренировка по исходному расписанию (без учёта переносов) */
+  function baseWorkout(date) {
+    var sch = D.schedule[weekday(date)];
     return sch && sch.workout ? D.workouts[sch.workout] : null;
   }
 
+  /* Плановая тренировка на дату с учётом переносов.
+     Всё остальное — расписание, отчёт, блок плеча, меню БодиБалансом —
+     смотрит сюда, поэтому перенос везде работает одинаково. */
+  function plannedWorkout(date) {
+    var mv = (load().moves || {})[date];
+    if (mv === 'rest') return null;
+    if (mv && D.workouts[mv]) return D.workouts[mv];
+    return baseWorkout(date);
+  }
+
+  function movedAt(date) {
+    var mv = (load().moves || {})[date];
+    return mv === undefined ? null : mv;      // 'rest', id тренировки или null
+  }
+
+  /* Тренировочный день — тот, где есть обязательная тренировка.
+     От этого зависит, доступно ли в этот день меню БодиБалансом. */
   function isTrainingDay(date) {
-    var wd = weekday(date);
-    return D.schedule[wd] && D.schedule[wd].type === 'train';
+    var wk = plannedWorkout(date);
+    return !!wk && !wk.optional;
+  }
+
+  /* Перенести тренировку с одной даты на другую.
+     Если на целевой дате уже стоит тренировка — меняем их местами. */
+  function moveWorkout(from, to) {
+    var st = load();
+    if (!st.moves) st.moves = {};
+    var src = plannedWorkout(from);
+    if (!src) throw new Error('В этот день тренировки и так нет');
+    if (from === to) throw new Error('Это тот же день');
+    var srcDay = st.days[from];
+    if (srcDay && srcDay.w && srcDay.w.done) throw new Error('Эта тренировка уже отмечена выполненной');
+    var dst = plannedWorkout(to);
+    var dstDay = st.days[to];
+    if (dstDay && dstDay.w && dstDay.w.done) throw new Error('На эту дату тренировка уже выполнена');
+
+    setMove(st, to, src.id);
+    setMove(st, from, dst ? dst.id : 'rest');
+    save();
+    return { moved: src, swapped: dst };
+  }
+
+  /* Ставим перенос, но если он совпал с исходным расписанием — убираем запись */
+  function setMove(st, date, value) {
+    var base = baseWorkout(date);
+    var natural = base ? base.id : 'rest';
+    if (value === natural) delete st.moves[date];
+    else st.moves[date] = value;
+  }
+
+  function clearMove(date) {
+    var st = load();
+    if (st.moves && st.moves[date] !== undefined) { delete st.moves[date]; save(); }
+  }
+
+  function clearMovesInWeek(monday) {
+    var st = load(), changed = false;
+    for (var i = 0; i < 7; i++) {
+      var d = addDays(monday, i);
+      if (st.moves && st.moves[d] !== undefined) { delete st.moves[d]; changed = true; }
+    }
+    if (changed) save();
+    return changed;
+  }
+
+  /* Сколько тренировок подряд получится, если поставить тренировку на эту дату */
+  function streakAround(date) {
+    var n = 1;
+    for (var i = 1; i <= 6; i++) {
+      var prev = plannedWorkout(addDays(date, -i));
+      if (prev && !prev.optional) n++; else break;
+    }
+    for (var j = 1; j <= 6; j++) {
+      var next = plannedWorkout(addDays(date, j));
+      if (next && !next.optional) n++; else break;
+    }
+    return n;
   }
 
   /* питание за день */
@@ -339,7 +414,8 @@
 
   root.Store = {
     KEY: KEY, load: load, save: save, day: day, exState: exState,
-    plannedWorkout: plannedWorkout, isTrainingDay: isTrainingDay,
+    plannedWorkout: plannedWorkout, baseWorkout: baseWorkout, isTrainingDay: isTrainingDay,
+    moveWorkout: moveWorkout, movedAt: movedAt, clearMove: clearMove, clearMovesInWeek: clearMovesInWeek, streakAround: streakAround,
     nutrition: nutrition, findOption: findOption, addFood: addFood, removeFood: removeFood, searchFood: searchFood, parseFoodCode: parseFoodCode,
     addWeight: addWeight, removeWeight: removeWeight, lastWeight: lastWeight, planWeight: planWeight,
     isConfigured: isConfigured, totalDays: totalDays, weeklyLoss: weeklyLoss, setProfile: setProfile, fill: fill,

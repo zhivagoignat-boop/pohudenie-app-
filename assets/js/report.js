@@ -201,6 +201,14 @@
       L.push('');
     }
     if (all.extra) { L.push('➕ Тренировок вне графика: ' + all.extra); L.push(''); }
+    var moved = dates.filter(function (date) { return (state.moves || {})[date] !== undefined; });
+    if (moved.length) {
+      L.push('⇄ **Переносы:** ' + moved.slice(-6).map(function (date) {
+        var mv = state.moves[date];
+        return S.human(date) + ' → ' + (mv === 'rest' ? 'отдых' : (D.workouts[mv] ? D.workouts[mv].title.split(' — ')[0] : mv));
+      }).join(', '));
+      L.push('');
+    }
     if (all.missed.length) {
       L.push('⚠️ **Не отмечено/пропущено:** ' + all.missed.slice(-6).map(S.human).join(', '));
       L.push('');
