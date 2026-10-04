@@ -172,3 +172,13 @@ body.tg-main .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .chip b { color: var(--accent2); font-weight: 600; margin-left: 3px; }
 .chip:active { background: var(--accent); color: #06220f; border-color: transparent; }
 .chip:active b { color: #06220f; }
+
+/* ---- плашка обновления ---- */
+.upd-banner {
+  position: fixed; left: 10px; right: 10px; z-index: 60;
+  top: calc(10px + env(safe-area-inset-top));
+  display: flex; align-items: center; gap: 10px; justify-content: space-between;
+  background: var(--card); border: 1px solid var(--accent); border-radius: 14px;
+  padding: 10px 12px; font-size: 13.5px; box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+.upd-banner button { padding: 8px 12px; white-space: nowrap; }

@@ -871,7 +871,7 @@
       '</div><input type="file" id="fileIn" accept="application/json" hidden>' +
       '<p class="small muted">Данные хранятся только в этом браузере. Экспорт — резервная копия и файл для отчёта в репозитории.</p></div>';
 
-    h += '<p class="small muted" style="text-align:center;margin:18px 0 0">Версия ' + esc(D.version.date) +
+    h += '<p class="small muted" style="text-align:center;margin:18px 0 0">Версия ' + esc(D.version.v) +
       ' · последнее: ' + esc(D.version.feature) + '</p>';
 
     var v = view('progress'); v.innerHTML = h;
@@ -1285,6 +1285,52 @@
     var el = $('#syncStatus');
     if (el) el.textContent = status;
   };
+
+  /* ---------- обновления ----------
+     Telegram не перезагружает мини-приложение, когда его сворачивают свайпом,
+     и старый код может жить в памяти сколько угодно. Поэтому приложение само
+     сверяет свою версию с той, что лежит на сервере. */
+  function checkForUpdate(initial) {
+    if (location.protocol.indexOf('http') !== 0 || !window.fetch) return;
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (info) {
+        if (!info || !info.version || info.version === D.version.v) return;
+        var already = null;
+        try { already = sessionStorage.getItem('reloadedFor'); } catch (e) { /* без sessionStorage — просто покажем плашку */ }
+        if (initial && already !== info.version) {
+          // при открытии обновляемся молча; флаг не даёт уйти в бесконечную перезагрузку
+          try { sessionStorage.setItem('reloadedFor', info.version); } catch (e) {}
+          reloadFresh(info.version);
+        } else {
+          showUpdateBanner(info);
+        }
+      })
+      .catch(function () { /* нет сети — проверим в следующий раз */ });
+  }
+
+  /* Перезагрузка с новым ?v= — ни один кеш не узнает этот адрес.
+     Хвост после # сохраняем: в нём Telegram передаёт данные входа. */
+  function reloadFresh(ver) {
+    location.replace(location.pathname + '?v=' + encodeURIComponent(ver) + location.hash);
+  }
+
+  function showUpdateBanner(info) {
+    if ($('#updBanner')) return;
+    var bar = document.createElement('div');
+    bar.id = 'updBanner';
+    bar.className = 'upd-banner';
+    bar.innerHTML = '<span>🔄 Вышло обновление' + (info.feature ? ': ' + esc(info.feature) : '') + '</span>' +
+      '<button class="btn-primary" id="updGo">Обновить</button>';
+    document.body.appendChild(bar);
+    $('#updGo').addEventListener('click', function () { reloadFresh(info.version); });
+  }
+
+  checkForUpdate(true);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') checkForUpdate(false);   // вернулись в свёрнутое приложение
+  });
+  setInterval(function () { checkForUpdate(false); }, 30 * 60 * 1000);
 
   if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
     navigator.serviceWorker.register('sw.js').catch(function () {});
