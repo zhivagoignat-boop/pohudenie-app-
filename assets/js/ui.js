@@ -8,7 +8,8 @@
   var tab = 'today';
   var timer = null, timerLeft = 0;
   var foodQuery = '', foodGroup = 'Все';
-  var movePicker = false;                 // открыт ли выбор даты для переноса тренировки   // фильтры в списке продуктов с клетчаткой
+  var movePicker = false;
+  var pendingPaste = null;               // текст из буфера, который надо подставить на вкладке «Еда»                 // открыт ли выбор даты для переноса тренировки   // фильтры в списке продуктов с клетчаткой
 
   /* ---------- утилиты ---------- */
   function $(sel, ctx) { return (ctx || document).querySelector(sel); }
@@ -95,7 +96,9 @@
       '<div class="row spread" style="margin-top:10px"><span>Белок</span><strong>' + n.p + ' / ' + D.program.protein[0] + ' г</strong></div>' +
       '<div class="meter' + (n.p < D.program.proteinMin ? ' warn' : '') + '"><div style="width:' + pPct + '%"></div></div>' +
       (n.p && n.p < D.program.proteinMin ? '<p class="small" style="color:var(--warn)">⚠️ Белка меньше ' + D.program.proteinMin + ' г — добавь протеиновый перекус (30 г + молоко + банан = +32 г).</p>' : '') +
-      '<button class="btn-wide" style="margin-top:10px" data-goto="food">Отметить приёмы пищи</button></div>';
+      '<div class="row" style="margin-top:10px">' +
+      '<button style="flex:1" data-goto="food">Отметить еду</button>' +
+      '<button class="btn-primary" style="flex:1" id="pasteFood">📋 Еда от Клода</button></div></div>';
 
     // режим
     h += '<h2>Режим дня</h2><div class="card">' +
@@ -149,6 +152,10 @@
         if (s2.checklist[i]) delete s2.checklist[i]; else s2.checklist[i] = true;
         S.save(); render();
       });
+    });
+    var pf = $('#pasteFood', v);
+    if (pf) pf.addEventListener('click', function () {
+      readClipboard(function (text) { pendingPaste = text || ''; tab = 'food'; render(); });
     });
     var ws = $('#wSave', v);
     if (ws) ws.addEventListener('click', function () {
@@ -459,8 +466,9 @@
       '<li>Он ответит строками вида <code>Блюдо | ккал | белок | жир | углеводы | клетчатка</code>.</li>' +
       '<li>Скопируй ответ целиком и вставь сюда.</li>' +
       '</ol>' +
-      '<textarea id="fdText" rows="4" placeholder="Стейк говяжий (250 г) | 620 | 54 | 44 | 0 | 0"></textarea>' +
-      '<button class="btn-primary btn-wide" id="fdParse" style="margin-top:8px">Разобрать и показать</button>' +
+      '<button class="btn-primary btn-wide" id="fdClip">📋 Вставить ответ Клода</button>' +
+      '<textarea id="fdText" rows="4" style="margin-top:8px" placeholder="или вставь вручную: Стейк (250 г) | 620 | 54 | 44 | 0 | 0"></textarea>' +
+      '<button class="btn-wide" id="fdParse" style="margin-top:8px">Разобрать и показать</button>' +
       '<div id="fdOut"></div>' +
       (photoCfg ? '' : '<p class="small muted" style="margin-bottom:0">Можно и без чата: свой сервис с ключом Claude API будет считать прямо в приложении — ' +
         'см. <code>worker/README.md</code>, адрес вписывается в «Прогресс → Оценка по фото».</p>') +
@@ -557,17 +565,37 @@
       pb.addEventListener('click', function () { $('#photoIn', v).click(); });
       $('#photoIn', v).addEventListener('change', function (e) { estimatePhoto(e.target.files[0]); });
     }
-    var fp = $('#fdParse', v);
-    if (fp) fp.addEventListener('click', function () {
+    function parsePasted() {
       var out = $('#fdOut', v);
-      var items = S.parseFoodCode($('#fdText', v).value);
-      if (!items.length) {
+      var block = S.parseFoodBlock($('#fdText', v).value);
+      if (!block.items.length) {
         out.innerHTML = '<p class="small" style="color:var(--warn)">Не нашёл ни одной строки с блюдом. ' +
           'Нужен формат <code>Название | ккал | белок | жир | углеводы | клетчатка</code> — по строке на блюдо.</p>';
         return;
       }
-      renderPhotoResult({ items: items, comment: 'Разобрано строк: ' + items.length }, out);
+      renderPhotoResult({ items: block.items, comment: 'Разобрано строк: ' + block.items.length }, out, block.date || cur);
+    }
+    var fp = $('#fdParse', v);
+    if (fp) fp.addEventListener('click', parsePasted);
+    var fc = $('#fdClip', v);
+    if (fc) fc.addEventListener('click', function () {
+      readClipboard(function (text) {
+        if (text) { $('#fdText', v).value = text; parsePasted(); }
+        else { $('#fdText', v).focus(); toast('Вставь текст долгим нажатием в поле'); }
+      });
     });
+    // пришли с кнопки на главной — подставляем и сразу разбираем
+    if (pendingPaste !== null) {
+      var txt = pendingPaste; pendingPaste = null;
+      var area = $('#fdText', v);
+      if (area) {
+        setTimeout(function () {
+          area.scrollIntoView({ block: 'center' });
+          if (txt) { area.value = txt; parsePasted(); }
+          else { area.focus(); toast('Вставь текст долгим нажатием в поле'); }
+        }, 50);
+      }
+    }
 
     $$('[data-out]', v).forEach(function (b) {
       b.addEventListener('click', function () {
@@ -640,14 +668,19 @@
     });
   }
 
-  function renderPhotoResult(data, out) {
+  function renderPhotoResult(data, out, targetDate) {
+    targetDate = targetDate || cur;
     var items = (data && data.items) || [];
     if (!items.length) {
       out.innerHTML = '<p class="small muted">Модель не нашла еду на фото. Попробуй снять ближе и при свете.</p>';
       return;
     }
+    var dupes = items.filter(function (it) { return S.hasFood(targetDate, foodItem(it)); }).length;
     var html = '<div class="card flat" style="margin-top:10px">';
+    if (targetDate !== cur) html += '<p class="small" style="color:var(--accent2)">📅 Будет добавлено на ' + esc(S.human(targetDate)) + '</p>';
     if (data.comment) html += '<p class="small muted">' + esc(data.comment) + '</p>';
+    if (dupes) html += '<p class="small" style="color:var(--warn)">' + (dupes === items.length ? 'Всё это уже добавлено' : 'Уже добавлено: ' + dupes + ' из ' + items.length) +
+      ' — повторно не добавлю.</p>';
     items.forEach(function (it, i) {
       html += '<div class="row spread" style="padding:6px 0;border-bottom:1px solid var(--line)">' +
         '<span class="small">' + esc(it.n) + (it.portion ? ' <span class="muted">(' + esc(it.portion) + ')</span>' : '') + '</span>' +
@@ -665,21 +698,42 @@
 
     $$('[data-addphoto]', out).forEach(function (b) {
       b.addEventListener('click', function () {
-        addPhotoItem(items[+b.dataset.addphoto]);
-        toast('Добавлено'); render();
+        var ok = addPhotoItem(items[+b.dataset.addphoto], targetDate);
+        toast(ok ? 'Добавлено' : 'Уже есть в этом дне'); render();
       });
     });
     $('#addAllPhoto', out).addEventListener('click', function () {
-      items.forEach(addPhotoItem);
-      TG.haptic('success'); toast('Добавлено блюд: ' + items.length); render();
+      var added = items.filter(function (it) { return addPhotoItem(it, targetDate); }).length;
+      TG.haptic('success');
+      toast(added ? 'Добавлено блюд: ' + added + (targetDate !== cur ? ' на ' + S.human(targetDate) : '') : 'Всё уже было добавлено');
+      if (targetDate !== cur) cur = targetDate;           // показываем день, куда добавили
+      render();
     });
   }
 
-  function addPhotoItem(it) {
-    S.addFood(cur, {
-      n: it.n + (it.portion ? ' (' + it.portion + ')' : ''),
-      k: it.k, p: it.p, f: it.f, c: it.c, fb: it.fb, src: 'photo'
-    });
+  function foodItem(it) {
+    return { n: it.n + (it.portion ? ' (' + it.portion + ')' : ''), k: it.k, p: it.p, f: it.f, c: it.c, fb: it.fb, src: 'photo' };
+  }
+
+  /* Добавляет блюдо в день; повтор того же блока не задваивает калории */
+  function addPhotoItem(it, date) {
+    var item = foodItem(it);
+    date = date || cur;
+    if (S.hasFood(date, item)) return false;
+    S.addFood(date, item);
+    return true;
+  }
+
+  /* Чтение буфера обмена. В Telegram на iOS система покажет пузырь «Вставить»,
+     где-то чтение запрещено вовсе — тогда вернём null и попросим вставить руками. */
+  function readClipboard(cb) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(function (t) { cb(t || null); }, function () { cb(null); });
+        return;
+      }
+    } catch (e) { /* падаем в ручную вставку */ }
+    cb(null);
   }
 
   /* Уменьшаем фото до 1024 px — меньше трафика и дешевле запрос */

@@ -382,11 +382,24 @@
      Формат по строке на блюдо:
         Название (порция) | ккал | белок | жир | углеводы | клетчатка
      Всё кроме названия и калорий необязательно, дробные через точку или запятую. */
-  function parseFoodCode(text) {
+  function parseFoodCode(text) { return parseFoodBlock(text).items; }
+
+  /* То же, плюс необязательная строка «Дата: 2026-10-04» (или «04.10», «04.10.2026»):
+     с ней еда попадает в нужный день, какой бы день ни был открыт в приложении. */
+  function parseFoodBlock(text) {
     var lines = String(text || '').split(/[\n\r]+/);
-    var items = [];
+    var items = [], date = null;
     lines.forEach(function (line) {
       line = line.trim();
+      var dm = /^дата\s*:?\s*(\d{4})-(\d{2})-(\d{2})\s*$/i.exec(line) ||
+               /^дата\s*:?\s*(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\s*$/i.exec(line);
+      if (dm) {
+        var y, m, d2;
+        if (dm[1].length === 4) { y = +dm[1]; m = +dm[2]; d2 = +dm[3]; }
+        else { d2 = +dm[1]; m = +dm[2]; y = dm[3] ? +(dm[3].length === 2 ? '20' + dm[3] : dm[3]) : parse(today()).getFullYear(); }
+        if (m >= 1 && m <= 12 && d2 >= 1 && d2 <= 31) date = y + '-' + pad(m) + '-' + pad(d2);
+        return;
+      }
       if (!line || /^FD1/i.test(line) || line.indexOf('|') < 0) return;
       var parts = line.split('|').map(function (x) { return x.trim(); });
       var name = parts[0];
@@ -398,7 +411,14 @@
       if (!nums.length || !nums[0]) return;                 // без калорий строка бессмысленна
       items.push({ n: name, k: nums[0], p: nums[1] || 0, f: nums[2] || 0, c: nums[3] || 0, fb: nums[4] || 0 });
     });
-    return items;
+    return { items: items, date: date };
+  }
+
+  /* Уже есть такое блюдо в этот день? Защита от повторной вставки того же блока. */
+  function hasFood(date, item) {
+    var d = day(date);
+    if (!d || !d.m || !d.m.add) return false;
+    return d.m.add.some(function (a) { return a.n === item.n && +a.k === +item.k; });
   }
 
   function exportJSON() { return JSON.stringify(load(), null, 2); }
@@ -416,7 +436,7 @@
     KEY: KEY, load: load, save: save, day: day, exState: exState,
     plannedWorkout: plannedWorkout, baseWorkout: baseWorkout, isTrainingDay: isTrainingDay,
     moveWorkout: moveWorkout, movedAt: movedAt, clearMove: clearMove, clearMovesInWeek: clearMovesInWeek, streakAround: streakAround,
-    nutrition: nutrition, findOption: findOption, addFood: addFood, removeFood: removeFood, searchFood: searchFood, parseFoodCode: parseFoodCode,
+    nutrition: nutrition, findOption: findOption, addFood: addFood, removeFood: removeFood, searchFood: searchFood, parseFoodCode: parseFoodCode, parseFoodBlock: parseFoodBlock, hasFood: hasFood,
     addWeight: addWeight, removeWeight: removeWeight, lastWeight: lastWeight, planWeight: planWeight,
     isConfigured: isConfigured, totalDays: totalDays, weeklyLoss: weeklyLoss, setProfile: setProfile, fill: fill,
     encodeSetup: encodeSetup, decodeSetup: decodeSetup,
