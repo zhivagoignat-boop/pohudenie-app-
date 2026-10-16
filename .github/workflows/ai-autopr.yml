@@ -48,12 +48,7 @@ jobs:
           old = p.read_text(encoding="utf-8") if p.exists() else ""
 
           system = "Return ONLY final file content. No markdown fences. No explanations."
-          user = f"""Task: {task}
-Target file: {target}
-
-Current content:
-{old}
-"""
+          user = f"Task: {task}\nTarget file: {target}\n\nCurrent content:\n{old}"
 
           payload = {
             "model": model,
