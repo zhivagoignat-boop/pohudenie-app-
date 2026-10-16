@@ -1,74 +1,8 @@
 name: AI Auto PR (OpenRouter)
-
 on:
   workflow_dispatch:
     inputs:
       task:
-        description: "Что изменить (например: Обнови README и добавь раздел Установка)"
+        description: "Что сделать"
         required: true
         type: string
-      target_file:
-        description: "Файл для изменения"
-        required: true
-        default: "README.md"
-        type: string
-      model:
-        description: "OpenRouter model"
-        required: true
-        default: "openai/gpt-4o-mini"
-        type: string
-
-permissions:
-  contents: write
-  pull-requests: write
-
-jobs:
-  ai-edit-and-pr:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Read current file (or create empty)
-        id: readfile
-        shell: bash
-        run: |
-          FILE="${{ github.event.inputs.target_file }}"
-          mkdir -p "$(dirname "$FILE")"
-          if [ ! -f "$FILE" ]; then
-            touch "$FILE"
-          fi
-          {
-            echo "file_path=$FILE"
-            echo "file_content<<EOF"
-            cat "$FILE"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
-
-      - name: Generate new content via OpenRouter
-        id: gen
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          TASK: ${{ github.event.inputs.task }}
-          MODEL: ${{ github.event.inputs.model }}
-          FILE_PATH: ${{ steps.readfile.outputs.file_path }}
-          FILE_CONTENT: ${{ steps.readfile.outputs.file_content }}
-        run: |
-          python - <<'PY'
-          import json, os, urllib.request
-
-          url = "https://openrouter.ai/api/v1/chat/completions"
-          api_key = os.environ["OPENROUTER_API_KEY"]
-          model = os.environ["MODEL"]
-          task = os.environ["TASK"]
-          file_path = os.environ["FILE_PATH"]
-          file_content = os.environ.get("FILE_CONTENT","")
-
-          system = (
-            "You are a senior software editor. "
-            "Return ONLY the full updated file content, no markdown fences, no explanations."
-          )
-          user = f"""Task:
-{task}
-
-Target file: {file_path}
