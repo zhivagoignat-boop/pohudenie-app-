@@ -23,11 +23,72 @@ permissions:
   pull-requests: write
 
 jobs:
-  test:
+  ai_autopr:
     runs-on: ubuntu-latest
     steps:
-      - name: Echo inputs
+      - uses: actions/checkout@v4
+
+      - name: Generate updated file via OpenRouter
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TASK: ${{ github.event.inputs.task }}
+          TARGET_FILE: ${{ github.event.inputs.target_file }}
+          MODEL: ${{ github.event.inputs.model }}
         run: |
-          echo "Task: ${{ github.event.inputs.task }}"
-          echo "Target: ${{ github.event.inputs.target_file }}"
-          echo "Model: ${{ github.event.inputs.model }}"
+          python - << 'PY'
+          import os, json, urllib.request, pathlib
+
+          key = os.environ["OPENROUTER_API_KEY"]
+          task = os.environ["TASK"]
+          target = os.environ["TARGET_FILE"]
+          model = os.environ["MODEL"]
+
+          p = pathlib.Path(target)
+          p.parent.mkdir(parents=True, exist_ok=True)
+          old = p.read_text(encoding="utf-8") if p.exists() else ""
+
+          system = "Return ONLY final file content. No markdown fences. No explanations."
+          user = f"""Task: {task}
+Target file: {target}
+
+Current content:
+{old}
+"""
+
+          payload = {
+            "model": model,
+            "messages": [
+              {"role": "system", "content": system},
+              {"role": "user", "content": user}
+            ]
+          }
+
+          req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+              "Authorization": f"Bearer {key}",
+              "Content-Type": "application/json"
+            },
+            method="POST"
+          )
+
+          with urllib.request.urlopen(req) as r:
+            data = json.loads(r.read().decode("utf-8"))
+
+          content = data["choices"][0]["message"]["content"].strip()
+          p.write_text(content + "\n", encoding="utf-8")
+          print(f"Updated {target}")
+          PY
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ai/${{ github.run_id }}
+          title: "AI update: ${{ github.event.inputs.target_file }}"
+          commit-message: "AI update for ${{ github.event.inputs.target_file }}"
+          body: |
+            Task: ${{ github.event.inputs.task }}
+            Model: ${{ github.event.inputs.model }}
+          add-paths: |
+            ${{ github.event.inputs.target_file }}
