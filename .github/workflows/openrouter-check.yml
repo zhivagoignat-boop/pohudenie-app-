@@ -1,0 +1,19 @@
+name: OpenRouter Check
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test OpenRouter
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          curl https://openrouter.ai/api/v1/chat/completions \
+            -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "model":"openai/gpt-4o-mini",
+              "messages":[{"role":"user","content":"Ping from GitHub Actions"}]
+            }'
